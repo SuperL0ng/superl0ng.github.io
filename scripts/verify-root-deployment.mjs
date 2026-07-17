@@ -1,22 +1,3 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-printf 'simonsportsbetting.com\n' > CNAME
-
-python3 - <<'PY'
-from pathlib import Path
-p=Path('index.html')
-s=p.read_text()
-old='https://simonsports.bet/'
-new='https://simonsportsbetting.com/'
-count=s.count(old)
-if count != 3:
-  raise SystemExit(f'Expected 3 root metadata references to {old}, found {count}')
-p.write_text(s.replace(old,new))
-PY
-
-mkdir -p scripts
-cat > scripts/verify-root-deployment.mjs <<'EOF'
 #!/usr/bin/env node
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -76,8 +57,3 @@ if(failures.length){
   process.exit(1);
 }
 console.log("Silver root deployment contract verified.");
-EOF
-
-node scripts/verify-root-deployment.mjs
-find . -path './.git' -prune -o -name '*.js' -type f -print0 | xargs -0 -n1 node --check
-rm -f scripts/prepare-root-cutover.sh .root-cutover-retry-*
