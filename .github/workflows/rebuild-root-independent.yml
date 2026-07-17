@@ -1,0 +1,228 @@
+name: Rebuild root as independent deployment
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out root repo
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: root
+          fetch-depth: 0
+
+      - name: Check out app repo
+        uses: actions/checkout@v4
+        with:
+          repository: SuperL0ng/parlay-tracker
+          ref: main
+          path: app-source
+          fetch-depth: 0
+
+      - name: Build self-contained silver deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/root"
+          APP="$GITHUB_WORKSPACE/app-source"
+
+          test -f "$ROOT/CNAME"
+          test -f "$APP/index.html"
+
+          # Remove the old runtime mirror and any prior root runtime files.
+          find "$ROOT" -mindepth 1 -maxdepth 1 \
+            ! -name '.git' \
+            ! -name '.github' \
+            ! -name 'CNAME' \
+            -exec rm -rf {} +
+
+          # Copy all top-level runtime code and media from the app repo.
+          find "$APP" -maxdepth 1 -type f \( \
+            -name '*.js' -o -name '*.json' -o -name '*.png' -o -name '*.ico' -o \
+            -name '*.svg' -o -name '*.webp' -o -name '*.jpg' -o -name '*.jpeg' \
+          \) -exec cp {} "$ROOT/" \;
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+
+          app = Path('app-source')
+          wrapper = (app / 'index.html').read_text()
+          match = re.search(r'https://raw\.githubusercontent\.com/SuperL0ng/parlay-tracker/([0-9a-f]{40})/([^\'\"]+)', wrapper)
+          if not match:
+              raise SystemExit('Could not identify the canonical base document in the app wrapper')
+          base_sha, base_path = match.groups()
+          base = subprocess.check_output(['git', '-C', str(app), 'show', f'{base_sha}:{base_path}'])
+          Path('/tmp/root-base.html').write_bytes(base)
+          Path('/tmp/root-base-sha.txt').write_text(base_sha)
+          PY
+
+          cat > /tmp/render-app-wrapper.cjs <<'NODE'
+          const fs=require('fs');
+          const wrapper=fs.readFileSync('app-source/index.html','utf8');
+          const base=fs.readFileSync('/tmp/root-base.html','utf8');
+          const match=wrapper.match(/<script>\s*([\s\S]*?)<\/script>\s*<\/body>/i);
+          if(!match)throw new Error('Could not extract app wrapper program');
+          let rendered='';
+          global.location={hostname:'root-static.invalid',origin:'https://simonsports.bet'};
+          global.fetch=async()=>({ok:true,status:200,text:async()=>base});
+          global.document={
+            body:{innerHTML:''},
+            open(){},
+            write(value){rendered=String(value)},
+            close(){},
+            createElement(){return{set src(value){this._src=value},get src(){return this._src},onload:null,onerror:null}},
+            head:{appendChild(){}},
+            documentElement:{appendChild(){}}
+          };
+          (async()=>{
+            await eval(match[1]);
+            if(!rendered||!/<html/i.test(rendered))throw new Error('App wrapper did not produce a complete document');
+            fs.writeFileSync('/tmp/rendered-app.html',rendered);
+          })().catch(error=>{console.error(error);process.exit(1)});
+          NODE
+          node /tmp/render-app-wrapper.cjs
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import re
+          import subprocess
+
+          root = Path('root')
+          html = Path('/tmp/rendered-app.html').read_text()
+          source_commit = subprocess.check_output(['git','-C','app-source','rev-parse','HEAD'],text=True).strip()
+          base_commit = Path('/tmp/root-base-sha.txt').read_text().strip()
+
+          html = re.sub(r'<link\b(?=[^>]*\brel=["\'](?:icon|shortcut icon|apple-touch-icon(?:-precomposed)?|manifest)["\'])[^>]*>\s*','',html,flags=re.I)
+          html = re.sub(r'<meta\b(?=[^>]*(?:name=["\'](?:theme-color|apple-mobile-web-app-title|twitter:[^"\']+)["\']|property=["\']og:[^"\']+["\']))[^>]*>\s*','',html,flags=re.I)
+          html = re.sub(r'<base\b[^>]*>\s*','',html,flags=re.I)
+          html = html.replace('./ssb_full_logo_web_768.png','./simon-sports-betting-nameplate.png?v=root-static-1')
+
+          head = '''
+          <link rel="icon" href="./favicon.ico?v=silver-root-4" sizes="any">
+          <link rel="shortcut icon" href="./favicon.ico?v=silver-root-4">
+          <link rel="icon" type="image/png" sizes="64x64" href="./ssb-favicon-v3-64.png?v=silver-root-4">
+          <link rel="icon" type="image/png" sizes="128x128" href="./ssb-favicon-v3-128.png?v=silver-root-4">
+          <link rel="apple-touch-icon" sizes="180x180" href="./ssb-touch-v3-180.png?v=silver-root-4">
+          <link rel="apple-touch-icon-precomposed" sizes="180x180" href="./ssb-touch-v3-180.png?v=silver-root-4">
+          <link rel="manifest" href="/manifest.json?v=4">
+          <meta name="theme-color" content="#d7dde6">
+          <meta name="apple-mobile-web-app-title" content="Parlay Tracker">
+          <meta property="og:type" content="website">
+          <meta property="og:title" content="Parlay Tracker">
+          <meta property="og:description" content="Simon Sports Betting Parlay Tracker">
+          <meta property="og:url" content="https://simonsports.bet/">
+          <meta property="og:image" content="https://simonsports.bet/ssb-share-v3.png">
+          <meta property="og:image:type" content="image/png">
+          <meta name="twitter:card" content="summary">
+          <meta name="twitter:image" content="https://simonsports.bet/ssb-share-v3.png">
+          '''
+          silver_style = '''<style id="silverRootHost">.top{border-color:rgba(255,255,255,.88)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.9),inset 0 -1px 0 rgba(44,52,63,.22),0 7px 16px rgba(0,0,0,.13)!important}</style>'''
+          html = re.sub(r'<head([^>]*)>',lambda m:'<head'+m.group(1)+'>'+head,html,count=1,flags=re.I)
+          html = re.sub(r'</head>',silver_style+'</head>',html,count=1,flags=re.I)
+          root.joinpath('index.html').write_text(html)
+
+          manifest = {
+            'name':'Simon Sports Betting Parlay Tracker',
+            'short_name':'Parlay Tracker',
+            'start_url':'/',
+            'scope':'/',
+            'display':'standalone',
+            'background_color':'#d7dde6',
+            'theme_color':'#d7dde6',
+            'icons':[
+              {'src':'./favicon-silver-v2-192.png','sizes':'192x192','type':'image/png','purpose':'any'},
+              {'src':'./favicon-silver-v2-512.png','sizes':'512x512','type':'image/png','purpose':'any'}
+            ]
+          }
+          root.joinpath('manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          root.joinpath('ROOT_RELEASE.json').write_text(json.dumps({
+            'deployment':'self-contained-silver-root',
+            'sourceRepository':'SuperL0ng/parlay-tracker',
+            'sourceCommit':source_commit,
+            'baseCommit':base_commit
+          },indent=2)+'\n')
+          PY
+
+      - name: Verify root deployment contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/root"
+          cd "$ROOT"
+
+          test -f index.html
+          test -f CNAME
+          test -f manifest.json
+          test -f library-backup.js
+          test -f simon-sports-betting-nameplate.png
+          test -f ssb_emblem_webapp_logo_transparent_768.png
+          test -f favicon-silver-v2-192.png
+          test -f favicon-silver-v2-512.png
+
+          ! grep -q 'raw.githubusercontent.com' index.html
+          ! grep -q 'sourcePage=' index.html
+          ! grep -q 'document.write' index.html
+          ! grep -qi '<base' index.html
+          ! grep -q 'simonsportsbetting.com/?mirror' index.html
+
+          grep -q 'simon-sports-betting-nameplate.png' index.html
+          grep -q 'navigation-links-v24.js' index.html
+          grep -q "#view=active" navigation-links-v24.js
+          grep -q "#ticket=" navigation-links-v24.js
+          grep -q 'library-backup.js' navigation-links-v24.js
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import re
+          from urllib.parse import urlsplit
+
+          root=Path('.')
+          html=Path('index.html').read_text()
+          refs=[]
+          refs += re.findall(r'<script\b[^>]*\bsrc=["\']([^"\']+)',html,re.I)
+          refs += re.findall(r'<img\b[^>]*\bsrc=["\']([^"\']+)',html,re.I)
+          refs += re.findall(r'<link\b[^>]*\bhref=["\']([^"\']+)',html,re.I)
+          missing=[]
+          for ref in refs:
+              if ref.startswith(('http://','https://','data:','#')):
+                  continue
+              path=urlsplit(ref).path.lstrip('/')
+              if path and not (root/path).exists():
+                  missing.append((ref,path))
+          if missing:
+              raise SystemExit('Missing local references: '+repr(missing))
+
+          manifest=json.loads(Path('manifest.json').read_text())
+          for icon in manifest.get('icons',[]):
+              path=urlsplit(icon['src']).path.lstrip('/')
+              if not (root/path).exists():
+                  raise SystemExit('Missing manifest icon: '+path)
+          PY
+
+          for file in ./*.js; do node --check "$file" >/dev/null; done
+
+      - name: Commit independent root deployment
+        shell: bash
+        run: |
+          cd "$GITHUB_WORKSPACE/root"
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No changes needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Rebuild root as self-contained silver deployment"
+          git push origin HEAD:main
