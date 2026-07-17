@@ -20,6 +20,7 @@ const second=game('game-2','2026-07-17T23:10:00Z','pre',false);
 const games=[first,second];
 const base={date:'20260717',league:'MLB',game:'TB@BOS'};
 const assert=(condition,message)=>{if(!condition)throw new Error(message)};
+assert(typeof C.legGame==='function','ParlayTrackerCore.legGame must remain exported');
 
 assert(C.findGame(games,'TB@BOS',base,{})===first,'A final Game 1 must not switch to upcoming Game 2');
 assert(C.findGame(games,'TB@BOS',{...base,gameId:'game-2'}, {})===second,'Explicit event ID must select Game 2');
