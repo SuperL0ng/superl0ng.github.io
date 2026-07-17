@@ -35,9 +35,18 @@
   }
 
   function scheduleCode(team){return code(team?.team?.abbreviation||team?.abbreviation||'')}
-  function findScheduledGame(games,value){
+  function instanceValue(ticket,leg,name){const C=window.ParlayTrackerCore;return C?.instanceValue?C.instanceValue(ticket,leg,name):(leg?.[name]??ticket?.[name])}
+  function scheduledStartKey(game){const C=window.ParlayTrackerCore;return C?.gameStartCT?C.gameStartCT({date:game?.gameDate}):''}
+  function findScheduledGame(games,value,ticket={},leg={},record={}){
     const wanted=gameKey(value);
-    return games.find(game=>`${scheduleCode(game.teams?.away)}@${scheduleCode(game.teams?.home)}`===wanted)||null;
+    const matches=games.filter(game=>`${scheduleCode(game.teams?.away)}@${scheduleCode(game.teams?.home)}`===wanted).sort((a,b)=>new Date(a?.gameDate||0)-new Date(b?.gameDate||0));
+    if(!matches.length)return null;
+    const pk=Number(instanceValue(ticket,leg,'gamePk'));if(Number.isFinite(pk)){const exact=matches.find(game=>Number(game.gamePk)===pk);if(exact)return exact}
+    const wantedStart=clean(instanceValue(ticket,leg,'gameStart'));if(wantedStart){const exact=matches.find(game=>scheduledStartKey(game)===wantedStart);if(exact)return exact}
+    const ordinal=Number(instanceValue(ticket,leg,'gameNumber'));if(Number.isInteger(ordinal)&&ordinal>=1&&ordinal<=matches.length)return matches[ordinal-1];
+    const ref=new Date(instanceValue(ticket,leg,'gameSavedAt')||record?.savedAt||record?.createdAt||record?.updatedAt||'').getTime();
+    if(Number.isFinite(ref)){const nearest=matches.reduce((best,game)=>{const time=new Date(game?.gameDate||'').getTime();if(!Number.isFinite(time))return best;const distance=Math.abs(time-ref);return !best||distance<best.distance?{game,distance}:best},null);if(nearest)return nearest.game}
+    return matches[0];
   }
   function startDate(game){
     const raw=game?.gameDate||game?.officialDate;
@@ -103,7 +112,7 @@
       const game=clean(leg.game||ticket.game),date=clean(leg.date||ticket.date);
       if(!game||!date)continue;
       if(!schedules.has(date))schedules.set(date,await scheduleFor(date));
-      const scheduled=findScheduledGame(schedules.get(date),game);
+      const scheduled=findScheduledGame(schedules.get(date),game,ticket,leg,record);
       const start=startDate(scheduled);
       if(start&&Date.now()<start.getTime())setLegPending(element,leg,game,displayTime(start));
     }

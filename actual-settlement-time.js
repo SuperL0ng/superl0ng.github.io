@@ -26,14 +26,20 @@
   function isFinal(feed){const s=feed?.gameData?.status||{};return s.abstractGameState==='Final'||/final|game over|completed/i.test(clean(s.detailedState))}
   function samePerson(person,name){const a=norm(person?.fullName||person?.fullNameLastFirst),b=norm(name);return Boolean(a&&b&&(a===b||a.includes(b)||b.includes(a)))}
 
-  async function getFeed(date,game){
-    const key=`${date}|${game}`;
+  function instanceValue(ticket,leg,name){const C=window.ParlayTrackerCore;return C?.instanceValue?C.instanceValue(ticket,leg,name):(leg?.[name]??ticket?.[name])}
+  function startKey(raw){const C=window.ParlayTrackerCore;return C?.gameStartCT?C.gameStartCT({date:raw}):''}
+  function chooseInstance(candidates,ticket,leg,record,idOf,dateOf){if(!candidates.length)return null;const sorted=[...candidates].sort((a,b)=>new Date(dateOf(a)||0)-new Date(dateOf(b)||0));const explicitPk=Number(instanceValue(ticket,leg,'gamePk'));if(Number.isFinite(explicitPk)){const exact=sorted.find(item=>Number(idOf(item))===explicitPk);if(exact)return exact}const explicitId=clean(instanceValue(ticket,leg,'gameId'));if(explicitId){const exact=sorted.find(item=>clean(idOf(item))===explicitId);if(exact)return exact}const wantedStart=clean(instanceValue(ticket,leg,'gameStart'));if(wantedStart){const exact=sorted.find(item=>startKey(dateOf(item))===wantedStart);if(exact)return exact}const ordinal=Number(instanceValue(ticket,leg,'gameNumber'));if(Number.isInteger(ordinal)&&ordinal>=1&&ordinal<=sorted.length)return sorted[ordinal-1];const rawRef=instanceValue(ticket,leg,'gameSavedAt')||record?.savedAt||record?.createdAt||record?.updatedAt||'';const ref=new Date(rawRef).getTime();if(Number.isFinite(ref)){const nearest=sorted.reduce((best,item)=>{const time=new Date(dateOf(item)||'').getTime();if(!Number.isFinite(time))return best;const distance=Math.abs(time-ref);return !best||distance<best.distance?{item,distance}:best},null);if(nearest)return nearest.item}return sorted[0]}
+  function mlbScheduleTeamMatches(team,abbr){const C=window.ParlayTrackerCore;return C?.teamMatches?C.teamMatches(team||{},abbr):teamCode(team)===clean(abbr).toUpperCase()}
+
+  async function getFeed(date,game,ticket={},leg={},record={}){
+    const discriminator=[instanceValue(ticket,leg,'gamePk'),instanceValue(ticket,leg,'gameId'),instanceValue(ticket,leg,'gameStart'),instanceValue(ticket,leg,'gameNumber'),record?.id].join('|');
+    const key=`${date}|${game}|${discriminator}`;
     if(cache.has(key))return cache.get(key);
     const promise=(async()=>{
       const p=parts(game);
       const schedule=await fetch(`${SCHEDULE}?sportId=1&date=${encodeURIComponent(dashDate(date))}&hydrate=team`,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(`Schedule ${r.status}`);return r.json()});
-      const games=(schedule.dates||[]).flatMap(d=>d.games||[]);
-      const match=games.find(g=>teamCode(g.teams?.away)===p.away&&teamCode(g.teams?.home)===p.home);
+      const games=(schedule.dates||[]).flatMap(d=>d.games||[]).filter(g=>mlbScheduleTeamMatches(g.teams?.away?.team||g.teams?.away,p.away)&&mlbScheduleTeamMatches(g.teams?.home?.team||g.teams?.home,p.home));
+      const match=chooseInstance(games,ticket,leg,record,g=>g?.gamePk,g=>g?.gameDate);
       if(!match?.gamePk)throw new Error('Game not found');
       return fetch(`${FEED}/${match.gamePk}/feed/live`,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(`Feed ${r.status}`);return r.json()});
     })();
@@ -43,13 +49,15 @@
 
   function basketballPath(league){return clean(league).toUpperCase()==='NBA'?'basketball/nba':'basketball/wnba'}
   function espnTeamMatches(team,code){const C=window.ParlayTrackerCore;return C?.teamMatches?C.teamMatches(team||{},code):teamCode(team)===clean(code).toUpperCase()}
-  async function getBasketballSummary(date,game,league){
-    const key=`${league}|${date}|${game}`;
+  async function getBasketballSummary(date,game,league,ticket={},leg={},record={}){
+    const discriminator=[instanceValue(ticket,leg,'gameId'),instanceValue(ticket,leg,'gameStart'),instanceValue(ticket,leg,'gameNumber'),record?.id].join('|');
+    const key=`${league}|${date}|${game}|${discriminator}`;
     if(cache.has(key))return cache.get(key);
     const promise=(async()=>{
       const p=parts(game),path=basketballPath(league);
       const board=await fetch(`${ESPN}/${path}/scoreboard?dates=${encodeURIComponent(clean(date).replace(/\D/g,''))}&limit=100`,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(`Scoreboard ${r.status}`);return r.json()});
-      const event=(board.events||[]).find(e=>{const competitors=e?.competitions?.[0]?.competitors||[],away=competitors.find(c=>c.homeAway==='away'),home=competitors.find(c=>c.homeAway==='home');return espnTeamMatches(away?.team,p.away)&&espnTeamMatches(home?.team,p.home)});
+      const candidates=(board.events||[]).filter(e=>{const competitors=e?.competitions?.[0]?.competitors||[],away=competitors.find(c=>c.homeAway==='away'),home=competitors.find(c=>c.homeAway==='home');return espnTeamMatches(away?.team,p.away)&&espnTeamMatches(home?.team,p.home)});
+      const event=chooseInstance(candidates,ticket,leg,record,e=>e?.id,e=>e?.date);
       if(!event?.id)throw new Error('Basketball game not found');
       return fetch(`${ESPN}/${path}/summary?event=${encodeURIComponent(event.id)}`,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(`Summary ${r.status}`);return r.json()});
     })();
@@ -309,8 +317,8 @@
       const leg=ticket.legs[i],game=leg.game||ticket.game,date=leg.date||ticket.date,league=effectiveLeague(ticket,leg);
       if(!supportedLeague(league)||!game||!date){results.push({index:i,status:'UNAVAILABLE',settledAt:'',reason:'No supported event feed'});continue}
       try{
-        if(clean(league).toUpperCase()==='MLB'){const feed=await getFeed(date,game);results.push({index:i,ledger:'mlb',...settleLeg(leg,feed)})}
-        else{const summary=await getBasketballSummary(date,game,league);results.push({index:i,ledger:'basketball',...settleBasketballLeg(leg,summary)})}
+        if(clean(league).toUpperCase()==='MLB'){const feed=await getFeed(date,game,ticket,leg,record);results.push({index:i,ledger:'mlb',...settleLeg(leg,feed)})}
+        else{const summary=await getBasketballSummary(date,game,league,ticket,leg,record);results.push({index:i,ledger:'basketball',...settleBasketballLeg(leg,summary)})}
       }
       catch{results.push({index:i,status:'UNAVAILABLE',settledAt:'',reason:'Feed unavailable'})}
     }
