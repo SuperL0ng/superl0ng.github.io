@@ -1,0 +1,2 @@
+Root production deployment release: simonsportsbetting.com
+Source commit includes independent silver deployment and final .com metadata.
