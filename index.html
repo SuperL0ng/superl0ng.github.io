@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="128x128" href="https://superl0ng.github.io/parlay-tracker/ssb-favicon-v3-128.png">
 <link rel="apple-touch-icon" sizes="180x180" href="https://superl0ng.github.io/parlay-tracker/ssb-touch-v3-180.png">
 <link rel="apple-touch-icon-precomposed" sizes="180x180" href="https://superl0ng.github.io/parlay-tracker/ssb-touch-v3-180.png">
-<link rel="manifest" href="https://superl0ng.github.io/parlay-tracker/manifest-v2.json">
+<link rel="manifest" href="/manifest.json?v=1">
 <meta name="theme-color" content="#d7dde6">
 <meta name="apple-mobile-web-app-title" content="Parlay Tracker">
 <meta property="og:type" content="website">
@@ -28,7 +28,7 @@
 (async()=>{
   const sourcePage='https://simonsportsbetting.com/?mirror='+Date.now();
   const assetBase='https://superl0ng.github.io/parlay-tracker/';
-  const silverHead='<link rel="icon" href="'+assetBase+'favicon.ico" sizes="any"><link rel="shortcut icon" href="'+assetBase+'favicon.ico"><link rel="icon" type="image/png" sizes="64x64" href="'+assetBase+'ssb-favicon-v3-64.png"><link rel="icon" type="image/png" sizes="128x128" href="'+assetBase+'ssb-favicon-v3-128.png"><link rel="apple-touch-icon" sizes="180x180" href="'+assetBase+'ssb-touch-v3-180.png"><link rel="apple-touch-icon-precomposed" sizes="180x180" href="'+assetBase+'ssb-touch-v3-180.png"><link rel="manifest" href="'+assetBase+'manifest-v2.json"><meta name="theme-color" content="#d7dde6"><meta name="apple-mobile-web-app-title" content="Parlay Tracker"><meta property="og:url" content="https://simonsports.bet/">';
+  const silverHead='<link rel="icon" href="'+assetBase+'favicon.ico" sizes="any"><link rel="shortcut icon" href="'+assetBase+'favicon.ico"><link rel="icon" type="image/png" sizes="64x64" href="'+assetBase+'ssb-favicon-v3-64.png"><link rel="icon" type="image/png" sizes="128x128" href="'+assetBase+'ssb-favicon-v3-128.png"><link rel="apple-touch-icon" sizes="180x180" href="'+assetBase+'ssb-touch-v3-180.png"><link rel="apple-touch-icon-precomposed" sizes="180x180" href="'+assetBase+'ssb-touch-v3-180.png"><link rel="manifest" href="/manifest.json?v=1"><meta name="theme-color" content="#d7dde6"><meta name="apple-mobile-web-app-title" content="Parlay Tracker"><meta property="og:url" content="https://simonsports.bet/">';
   try{
     const response=await fetch(sourcePage,{cache:'no-store'});
     if(!response.ok)throw new Error('Source app HTTP '+response.status);
