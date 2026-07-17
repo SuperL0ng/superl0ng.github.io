@@ -54,6 +54,6 @@
     }
     return{...leg,__game:game,__live:st};
   }
-  async function evaluateRecord(record,games){const ticket=record.ticket||{};const legs=await Promise.all((ticket.legs||[]).map(leg=>evalLeg(ticket,leg,games)));return{...record,__evaluated:legs}}
+  async function evaluateRecord(record,games){const source=record.ticket||{},ticket={...source,__recordReferenceTime:record.savedAt||record.createdAt||record.updatedAt||''};const legs=await Promise.all((source.legs||[]).map(leg=>evalLeg(ticket,leg,games)));return{...record,__evaluated:legs}}
   window.ParlayTrackerEvaluator={evaluateRecord};
 })();

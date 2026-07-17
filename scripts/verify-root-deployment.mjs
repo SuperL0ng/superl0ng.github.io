@@ -9,7 +9,7 @@ const check=(condition,message)=>{if(!condition)failures.push(message)};
 const read=(name)=>readFileSync(join(root,name),"utf8");
 
 const required=[
-  "index.html","CNAME","manifest.json","library-backup.js","view-fixes.js",
+  "index.html","CNAME","manifest.json","library-backup.js","view-fixes.js","doubleheader-game-binding.js",
   "favicon.ico","ssb-favicon-v3-64.png","ssb-favicon-v3-128.png",
   "ssb-touch-v3-180.png","favicon-silver-v2-192.png","favicon-silver-v2-512.png",
   "ssb-share-v3.png","simon-sports-betting-nameplate.png",
