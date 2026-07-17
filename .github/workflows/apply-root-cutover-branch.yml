@@ -1,0 +1,52 @@
+name: Apply root cutover branch
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.ref == 'cutover-root-to-com'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cutover-root-to-com
+          fetch-depth: 0
+      - name: Execute verified root preparation
+        id: prep
+        shell: bash
+        run: |
+          set +e
+          bash scripts/prepare-root-cutover.sh > root-cutover-prep.log 2>&1
+          status=$?
+          cat root-cutover-prep.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload root preparation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: root-cutover-prep-log
+          path: root-cutover-prep.log
+          if-no-files-found: error
+      - name: Commit verified root cutover state
+        if: steps.prep.outputs.status == '0'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes required."
+            exit 0
+          fi
+          git commit -m "Prepare silver root repo for simonsportsbetting.com"
+          git push origin HEAD:cutover-root-to-com
+      - name: Fail when preparation failed
+        if: steps.prep.outputs.status != '0'
+        shell: bash
+        run: exit 1
