@@ -1,0 +1,96 @@
+name: Promote MLB doubleheader binding fix
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    paths:
+      - .promote-doubleheader-fix
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out silver root branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Check out verified gold app release
+        uses: actions/checkout@v4
+        with:
+          repository: SuperL0ng/parlay-tracker
+          ref: a4635d7ae079a7e083bd31a81ba8ffd9f1447714
+          path: app-release
+          fetch-depth: 1
+
+      - name: Copy verified tracker logic
+        shell: bash
+        run: |
+          cp app-release/tracker-core-v51.js tracker-core-v51.js
+          cp app-release/tracker-sources-v51.js tracker-sources-v51.js
+          cp app-release/tracker-evaluator-v51.js tracker-evaluator-v51.js
+          cp app-release/actual-settlement-time.js actual-settlement-time.js
+          cp app-release/pregame-status-correction.js pregame-status-correction.js
+          cp app-release/doubleheader-game-binding.js doubleheader-game-binding.js
+          mkdir -p scripts
+          cp app-release/scripts/test-doubleheader-game-binding.mjs scripts/test-doubleheader-game-binding.mjs
+          rm -rf app-release
+
+      - name: Update root loader and deployment contract
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          index=Path('index.html')
+          s=index.read_text()
+          replacements={
+            '<script src="./tracker-core-v51.js?v=82"></script>':'<script src="./tracker-core-v51.js?v=120"></script>',
+            '<script src="./tracker-sources-v51.js?v=82"></script>':'<script src="./tracker-sources-v51.js?v=120"></script>',
+            '<script src="./tracker-evaluator-v51.js?v=95"></script>':'<script src="./tracker-evaluator-v51.js?v=120"></script>',
+            's.src="./actual-settlement-time.js?v=105"':'s.src="./actual-settlement-time.js?v=120"',
+            '<script src="./game-display-fixes.js?v=82"></script>':'<script src="./game-display-fixes.js?v=82"></script><script src="./doubleheader-game-binding.js?v=1"></script>'
+          }
+          for old,new in replacements.items():
+            count=s.count(old)
+            if count!=1:
+              raise SystemExit(f'index.html expected one occurrence of {old!r}, found {count}')
+            s=s.replace(old,new,1)
+          index.write_text(s)
+
+          verifier=Path('scripts/verify-root-deployment.mjs')
+          s=verifier.read_text()
+          old='"index.html","CNAME","manifest.json","library-backup.js","view-fixes.js",'
+          new='"index.html","CNAME","manifest.json","library-backup.js","view-fixes.js","doubleheader-game-binding.js",'
+          count=s.count(old)
+          if count!=1:
+            raise SystemExit(f'root verifier required-list target found {count} times')
+          verifier.write_text(s.replace(old,new,1))
+          PY
+
+      - name: Verify silver deployment and regression
+        shell: bash
+        run: |
+          node scripts/verify-root-deployment.mjs
+          node --check tracker-core-v51.js
+          node --check tracker-sources-v51.js
+          node --check tracker-evaluator-v51.js
+          node --check actual-settlement-time.js
+          node --check pregame-status-correction.js
+          node --check doubleheader-game-binding.js
+          node scripts/test-doubleheader-game-binding.mjs
+          grep -q 'doubleheader-game-binding.js?v=1' index.html
+          ! grep -q "matches.find(g=>!isFinal(g))" tracker-core-v51.js
+
+      - name: Commit promoted fix
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html tracker-core-v51.js tracker-sources-v51.js tracker-evaluator-v51.js actual-settlement-time.js pregame-status-correction.js doubleheader-game-binding.js scripts/test-doubleheader-game-binding.mjs scripts/verify-root-deployment.mjs
+          git commit -m "Promote MLB doubleheader game binding fix"
+          git push origin HEAD:${{ github.head_ref }}
