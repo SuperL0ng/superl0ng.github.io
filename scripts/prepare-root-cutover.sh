@@ -44,7 +44,7 @@ const navigation=read("navigation-links-v24.js");
 check(cname==="simonsportsbetting.com","Root CNAME must be simonsportsbetting.com");
 check(index.includes('content="https://simonsportsbetting.com/"'),"Missing final .com social URL");
 check(index.includes('https://simonsportsbetting.com/ssb-share-v3.png'),"Missing final .com share image");
-check(index.includes('./manifest.json'),"Missing local silver manifest reference");
+check(index.includes('/manifest.json'),"Missing local silver manifest reference");
 check(index.includes('id="silverRootHost"'),"Root silver identity override is missing");
 check(!index.includes("simonsports.bet"),"Root index still references the staging .bet domain");
 check(!index.includes("<base"),"Root index contains a base element");
