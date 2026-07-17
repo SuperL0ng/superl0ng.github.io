@@ -1,0 +1,23 @@
+{
+  "name": "Simon Sports Betting Parlay Tracker",
+  "short_name": "Parlay Tracker",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#d7dde6",
+  "theme_color": "#d7dde6",
+  "icons": [
+    {
+      "src": "https://superl0ng.github.io/parlay-tracker/favicon-silver-v2-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://superl0ng.github.io/parlay-tracker/favicon-silver-v2-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
