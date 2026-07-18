@@ -1,4 +1,4 @@
-/* Native ticket-view navigation V26 — preserve stable ticket identity on upgraded links */
+/* Native ticket-view navigation V25 — reset live refresh identity on Close */
 (()=>{
   'use strict';
 
@@ -48,8 +48,6 @@
     link.id=button.id;
     link.textContent=button.textContent;
     link.setAttribute('role','button');
-    const onclick=button.getAttribute('onclick');
-    if(onclick)link.setAttribute('onclick',onclick);
     button.replaceWith(link);
     return link;
   }
