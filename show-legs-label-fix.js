@@ -1,4 +1,4 @@
-/* DASHBOARD TICKET ID BINDING V4 — stable details, selection, and settlement stamps */
+/* DASHBOARD TICKET ID BINDING V5 — stable details, selection, and settlement stamps */
 (() => {
   'use strict';
 
@@ -205,6 +205,11 @@
     store(load().filter(record=>!selectedIds.has(String(record.id||''))));
     for(const id of selectedIds)openIds.delete(id);
     selectedIds.clear();
+    const selectButton=document.getElementById('ticketSelectModeBtn');
+    if(document.body.classList.contains('ticketSelectMode')){
+      if(selectButton)selectButton.click();
+      else document.body.classList.remove('ticketSelectMode');
+    }
     window.renderTicketDashboard?.();
     setTimeout(repairDashboard,0);
   }
